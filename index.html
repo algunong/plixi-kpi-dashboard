@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Plixi Team KPI Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --brand:    #7c3aed;
+      --brand-dk: #5b21b6;
+      --green:    #057a55;
+      --red:      #c81e1e;
+      --yellow:   #d97706;
+      --bg:       #f5f3ff;
+      --surface:  #ffffff;
+      --border:   #e5e7eb;
+      --text:     #111827;
+      --muted:    #6b7280;
+      --radius:   12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+    header { background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dk) 100%); color: #fff; padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    header h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -.3px; }
+    .meta { font-size: .82rem; opacity: .85; margin-top: 3px; }
+    #last-updated { font-size: .75rem; opacity: .7; }
+    #refresh-btn { background: rgba(255,255,255,.2); border: 1px solid rgba(255,255,255,.35); color: #fff; padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: .82rem; transition: background .2s; }
+    #refresh-btn:hover { background: rgba(255,255,255,.3); }
+    .date-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 32px; background: #fff; border-bottom: 1px solid var(--border); font-size: .82rem; }
+    .date-bar label { font-weight: 600; color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .5px; }
+    .date-bar input[type="date"] { border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: .82rem; color: var(--text); background: #f9fafb; cursor: pointer; }
+    .date-bar input[type="date"]:focus { outline: none; border-color: var(--brand); background: #fff; }
+    .sep { color: var(--muted); }
+    .btn-apply { background: var(--brand); color: #fff; border: none; border-radius: 8px; padding: 7px 14px; font-size: .82rem; font-weight: 600; cursor: pointer; transition: background .2s; }
+    .btn-apply:hover { background: var(--brand-dk); }
+    .btn-sheet { background: #fff; color: var(--brand); border: 1px solid var(--brand); border-radius: 8px; padding: 6px 12px; font-size: .82rem; font-weight: 600; cursor: pointer; text-decoration: none; transition: background .2s; }
+    .btn-sheet:hover { background: #f5f3ff; }
+    .agent-bar { display: flex; align-items: center; gap: 12px; padding: 10px 32px; background: #ede9fe; border-bottom: 1px solid var(--border); font-size: .82rem; }
+    .filter-label { font-weight: 600; color: var(--brand-dk); font-size: .72rem; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
+    #agent-select { border: 1.5px solid var(--brand); border-radius: 8px; padding: 6px 12px; font-size: .82rem; color: var(--text); background: #fff; cursor: pointer; min-width: 200px; }
+    #agent-select:focus { outline: none; }
+    .agent-bar-hint { font-size: .72rem; color: var(--muted); }
+    #loading, #error-msg { text-align: center; padding: 60px 20px; font-size: 1rem; color: var(--muted); }
+    #error-msg { color: var(--red); }
+    .spinner { width: 40px; height: 40px; border: 4px solid var(--border); border-top-color: var(--brand); border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 16px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    main { padding: 24px 32px; max-width: 1440px; margin: 0 auto; }
+    .hidden { display: none !important; }
+    .section-title { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); margin-bottom: 12px; margin-top: 4px; }
+    .section-hint { font-size: .75rem; color: var(--muted); margin-top: -8px; margin-bottom: 14px; }
+
+    /* KPI cards */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 14px; margin-bottom: 28px; }
+    .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; position: relative; overflow: hidden; }
+    .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: var(--brand); }
+    .kpi-card.green::before { background: var(--green); }
+    .kpi-card.yellow::before { background: var(--yellow); }
+    .kpi-card.red::before { background: var(--red); }
+    .kpi-card.teal::before { background: #0891b2; }
+    .kpi-card .label { font-size: .7rem; color: var(--muted); font-weight: 500; margin-bottom: 6px; line-height: 1.4; }
+    .kpi-card .value { font-size: 1.65rem; font-weight: 700; line-height: 1; color: var(--text); }
+    .kpi-card .sub { font-size: .68rem; color: var(--muted); margin-top: 4px; }
+    .kpi-group-label { font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--brand); margin-bottom: 8px; margin-top: 14px; padding-left: 2px; }
+
+    /* Agent cards */
+    .agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 18px; margin-bottom: 28px; }
+    .agent-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .agent-header { color: #fff; padding: 12px 18px; display: flex; align-items: center; gap: 12px; }
+    .agent-avatar { width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,.25); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .95rem; flex-shrink: 0; }
+    .agent-name { font-weight: 600; font-size: .9rem; }
+    .agent-team { font-size: .72rem; opacity: .8; }
+    .agent-stats { padding: 14px 18px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .stat-item .stat-label { font-size: .65rem; color: var(--muted); font-weight: 500; line-height: 1.3; }
+    .stat-item .stat-value { font-size: 1rem; font-weight: 700; color: var(--text); }
+    .stat-item .stat-value.good { color: var(--green); }
+    .stat-item .stat-value.bad  { color: var(--red); }
+    .agent-divider { height: 1px; background: var(--border); margin: 0 18px; }
+
+    /* Charts */
+    .charts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 18px; margin-bottom: 28px; }
+    .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+    .chart-card h3 { font-size: .78rem; font-weight: 600; color: var(--text); margin-bottom: 14px; }
+    .chart-wrap { position: relative; height: 210px; }
+
+    /* Table */
+    .table-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 32px; }
+    .table-header { padding: 14px 18px; border-bottom: 1px solid var(--border); font-size: .82rem; font-weight: 600; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+    thead th { background: #f9fafb; padding: 9px 12px; text-align: left; font-weight: 600; color: var(--muted); font-size: .68rem; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; border-bottom: 1px solid var(--border); }
+    tbody td { padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: #faf5ff; }
+    tbody tr.avg-row td { background: #ede9fe; font-weight: 600; color: var(--brand-dk); }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: .68rem; font-weight: 600; }
+    .pill.green { background: #d1fae5; color: var(--green); }
+    .pill.red   { background: #fee2e2; color: var(--red); }
+    .pill.yellow{ background: #fef3c7; color: var(--yellow); }
+    footer { text-align: center; padding: 20px; font-size: .72rem; color: var(--muted); border-top: 1px solid var(--border); }
+    @media (max-width: 640px) { main { padding: 16px; } header { padding: 14px 16px; } .kpi-grid { grid-template-columns: repeat(2, 1fr); } .charts-grid { grid-template-columns: 1fr; } .agent-stats { grid-template-columns: 1fr 1fr; } }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>📊 Plixi Team KPI Dashboard</h1>
+    <div class="meta" id="date-range">Loading…</div>
+    <div id="last-updated"></div>
+  </div>
+  <button id="refresh-btn" onclick="loadData()">↻ Refresh</button>
+</header>
+
+<div class="date-bar">
+  <label>Date Range</label>
+  <input type="date" id="input-start" title="Start date" />
+  <span class="sep">→</span>
+  <input type="date" id="input-end" title="End date" />
+  <button class="btn-apply" onclick="applyDates()">Apply &amp; Refresh</button>
+  <a class="btn-sheet" href="https://docs.google.com/spreadsheets/d/1w7y_AMs3s2tGamEgyZpPQ-hs5jF3hlcc9ydPJ6VRqjc/edit?gid=838951842" target="_blank">✍️ Edit in Sheet</a>
+</div>
+
+<div class="agent-bar hidden" id="agent-bar">
+  <span class="filter-label">👤 Agent View</span>
+  <select id="agent-select" onchange="applyAgentFilter()">
+    <option value="all">All Agents</option>
+  </select>
+  <span class="agent-bar-hint">Select an agent to isolate their week-over-week charts</span>
+</div>
+
+<div id="loading"><div class="spinner"></div>Fetching latest data from Google Sheets…</div>
+<div id="error-msg" class="hidden"></div>
+
+<main id="dashboard" class="hidden">
+
+  <div class="section-title">Team Averages / Totals</div>
+  <div id="kpi-cards"></div>
+
+  <div class="section-title">Agent Performance</div>
+  <div class="agent-grid" id="agent-cards"></div>
+
+  <div class="section-title">Week-over-Week Comparison</div>
+  <p class="section-hint">Shows each agent's performance trend by week. Select a single agent above to view their individual progression.</p>
+  <div class="charts-grid">
+    <div class="chart-card"><h3>📧 Total Emails (Weekly)</h3><div class="chart-wrap"><canvas id="chart-emails"></canvas></div></div>
+    <div class="chart-card"><h3>💬 Total Chats (Weekly)</h3><div class="chart-wrap"><canvas id="chart-chats"></canvas></div></div>
+    <div class="chart-card"><h3>📨 Emails + Chats Combined (Weekly)</h3><div class="chart-wrap"><canvas id="chart-combined"></canvas></div></div>
+    <div class="chart-card"><h3>✅ Conversations Closed (Weekly)</h3><div class="chart-wrap"><canvas id="chart-closed"></canvas></div></div>
+    <div class="chart-card"><h3>🔐 % Login Utilized (Weekly Avg)</h3><div class="chart-wrap"><canvas id="chart-login"></canvas></div></div>
+    <div class="chart-card"><h3>⏱️ Email AHT — min (Weekly Avg)</h3><div class="chart-wrap"><canvas id="chart-email-aht"></canvas></div></div>
+    <div class="chart-card"><h3>⏱️ Chat AHT — min (Weekly Avg)</h3><div class="chart-wrap"><canvas id="chart-chat-aht"></canvas></div></div>
+    <div class="chart-card"><h3>⏱️ Task AHT — min (Weekly Avg)</h3><div class="chart-wrap"><canvas id="chart-task-aht"></canvas></div></div>
+  </div>
+
+  <div class="section-title">Full Metrics Table</div>
+  <div class="table-card">
+    <div class="table-header">All Agents — Plixi Team Detail</div>
+    <div class="table-wrap">
+      <table><thead id="table-head"></thead><tbody id="table-body"></tbody></table>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  Data source: <a href="https://docs.google.com/spreadsheets/d/1w7y_AMs3s2tGamEgyZpPQ-hs5jF3hlcc9ydPJ6VRqjc/edit?gid=838951842" target="_blank">Plixi Team — Gladly Agent Reporting</a>
+  &nbsp;·&nbsp; Dashboard auto-fetches on load
+</footer>
+
+<script>
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
+const SHEET_ID = '1w7y_AMs3s2tGamEgyZpPQ-hs5jF3hlcc9ydPJ6VRqjc';
+const GID      = '838951842';
+const COLORS   = ['#7c3aed','#057a55','#d97706','#1a56db','#db2777','#0891b2','#dc2626','#065f46'];
+const PALE     = COLORS.map(c => c + 'bb');
+
+// Column indices (0-based) confirmed from sheet structure
+const C = {
+  date:           2,   // Bucket Beginning
+  name:           4,   // Name
+  loginSec:       13,  // Logged in Time in seconds
+  activeSec:      17,  // Active Time in seconds
+  convClosed:     34,  // Conversation Closed
+  taskClosed:     67,  // Task Closed
+  taskHandleSec:  82,  // Task Handle Time in seconds (total)
+  occupancy:      77,  // Occupancy %
+  chatOffered:    87,  // Contact Offered - Chat
+  emailOffered:   88,  // Contact Offered - Email
+  chatFulfilled:  119, // Contact Fulfilled - Chat
+  emailFulfilled: 120, // Contact Fulfilled - Email
+  chatAHTSec:     198, // Avg Accepted-to-Fulfilled Time in seconds - Chat
+  emailAHTSec:    199, // Avg Accepted-to-Fulfilled Time in seconds - Email
+  chatMsgSent:    206, // Message Sent - Chat
+  emailMsgSent:   207, // Message Sent - Email
+};
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let allAgents  = [];   // finalized agent objects
+let rawAgents  = {};   // raw accumulation {name → {...}}
+let weeklyData = {};   // {name → {weekLabel → {...}}}
+let allWeeks   = [];   // sorted week labels
+let charts     = {};
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+const r2  = v => Math.round(v * 100) / 100;
+const r1  = v => Math.round(v * 10) / 10;
+const r0  = v => Math.round(v);
+const avg = arr => arr.length ? arr.reduce((s,v) => s+v, 0) / arr.length : 0;
+const sum = arr => arr.reduce((s,v) => s+v, 0);
+
+function gn(c, i) {
+  if (i < 0 || !c || !c[i]) return 0;
+  const v = c[i].v;
+  if (v === null || v === undefined || v === '') return 0;
+  return parseFloat(v) || 0;
+}
+function fixName(s) {
+  if (!s) return '';
+  try { return decodeURIComponent(escape(s)); } catch(e) { return s; }
+}
+function parseGvizDate(v) {
+  if (!v) return null;
+  const m = String(v).match(/Date\((\d+),(\d+),(\d+)/);
+  if (m) return new Date(+m[1], +m[2], +m[3]);
+  const s = String(v).replace(' ', 'T');
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+function dateToIso(d) {
+  if (!d) return '';
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function fmtDate(d) { return d ? `${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}` : ''; }
+function isoToDisplay(iso) { if (!iso) return ''; const [y,m,d]=iso.split('-'); return `${+m}/${+d}/${y}`; }
+function displayToIso(s) { if(!s) return ''; const p=String(s).split('/'); if(p.length===3) return `${p[2]}-${p[0].padStart(2,'0')}-${p[1].padStart(2,'0')}`; return ''; }
+
+function getWeekLabel(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  const mon = new Date(d); mon.setDate(diff);
+  return `${mon.getMonth()+1}/${mon.getDate()}`;
+}
+
+// ─── DATE PERSISTENCE ────────────────────────────────────────────────────────
+function loadSavedDates() {
+  const s = localStorage.getItem('plixi_start');
+  const e = localStorage.getItem('plixi_end');
+  if (s) document.getElementById('input-start').value = s;
+  if (e) document.getElementById('input-end').value   = e;
+}
+function saveDates(s, e) {
+  if (s) localStorage.setItem('plixi_start', s);
+  if (e) localStorage.setItem('plixi_end',   e);
+}
+function applyDates() {
+  const s = document.getElementById('input-start').value;
+  const e = document.getElementById('input-end').value;
+  saveDates(s, e);
+  loadData();
+}
+function syncDateInputs(startDate, endDate) {
+  const s = document.getElementById('input-start');
+  const e = document.getElementById('input-end');
+  if (!localStorage.getItem('plixi_start') && startDate) s.value = dateToIso(startDate);
+  if (!localStorage.getItem('plixi_end')   && endDate)   e.value = dateToIso(endDate);
+}
+
+// ─── FETCH ────────────────────────────────────────────────────────────────────
+async function loadData() {
+  document.getElementById('loading').classList.remove('hidden');
+  document.getElementById('dashboard').classList.add('hidden');
+  document.getElementById('error-msg').classList.add('hidden');
+
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${GID}&tq=${encodeURIComponent('SELECT *')}`;
+  try {
+    const res  = await fetch(url);
+    const text = await res.text();
+    const json = JSON.parse(text.replace(/^[^(]+\(/, '').replace(/\);?\s*$/, ''));
+    processData(json);
+  } catch(e) {
+    console.error('Fetch failed:', e);
+    document.getElementById('error-msg').textContent = '⚠️ Could not load data. Make sure this page is opened in a browser and the Google Sheet is accessible. Check the console for details.';
+    document.getElementById('error-msg').classList.remove('hidden');
+    document.getElementById('loading').classList.add('hidden');
+  }
+}
+
+// ─── PROCESS ─────────────────────────────────────────────────────────────────
+function processData(json) {
+  rawAgents  = {};
+  weeklyData = {};
+
+  const rows = json.table.rows;
+  const savedStart = localStorage.getItem('plixi_start');
+  const savedEnd   = localStorage.getItem('plixi_end');
+  const filterStart = savedStart ? new Date(savedStart) : new Date('2000-01-01');
+  const filterEnd   = savedEnd   ? new Date(savedEnd)   : null;
+
+  let minDate = null, maxDate = null;
+
+  rows.forEach(row => {
+    const c = row.c || [];
+    const name = fixName(c[C.name]?.v);
+    if (!name || name.trim() === '') return;
+
+    const date = parseGvizDate(c[C.date]?.v);
+    if (!date) return;
+    if (date < filterStart) return;
+    if (filterEnd) { const fe = new Date(filterEnd); fe.setHours(23,59,59); if (date > fe) return; }
+
+    if (!minDate || date < minDate) minDate = date;
+    if (!maxDate || date > maxDate) maxDate = date;
+
+    if (!rawAgents[name]) {
+      rawAgents[name] = {
+        name, logSec:0, actSec:0,
+        emailOffered:0, chatOffered:0,
+        emailFulfilled:0, chatFulfilled:0,
+        convClosed:0, taskClosed:0, taskHandleSec:0,
+        emailAHTWSum:0, emailAHTWCount:0,
+        chatAHTWSum:0,  chatAHTWCount:0,
+        days: new Set(),
+      };
+    }
+
+    const a   = rawAgents[name];
+    const logS = gn(c, C.loginSec);
+    const actS = gn(c, C.activeSec);
+    const eOff = gn(c, C.emailOffered);
+    const cOff = gn(c, C.chatOffered);
+    const eFul = gn(c, C.emailFulfilled);
+    const cFul = gn(c, C.chatFulfilled);
+    const tCl  = gn(c, C.taskClosed);
+    const tHS  = gn(c, C.taskHandleSec);
+    const eAHT = parseFloat(c[C.emailAHTSec]?.v) || 0;
+    const cAHT = parseFloat(c[C.chatAHTSec]?.v)  || 0;
+
+    a.logSec       += logS;
+    a.actSec       += actS;
+    a.emailOffered += eOff;
+    a.chatOffered  += cOff;
+    a.emailFulfilled += eFul;
+    a.chatFulfilled  += cFul;
+    a.convClosed   += gn(c, C.convClosed);
+    a.taskClosed   += tCl;
+    a.taskHandleSec += tHS;
+    if (eAHT > 0 && eFul > 0) { a.emailAHTWSum += eAHT * eFul; a.emailAHTWCount += eFul; }
+    if (cAHT > 0 && cFul > 0) { a.chatAHTWSum  += cAHT * cFul; a.chatAHTWCount  += cFul; }
+    if (logS > 14400) a.days.add(dateToIso(date));
+
+    // Weekly grouping
+    const wk = getWeekLabel(date);
+    if (!weeklyData[name]) weeklyData[name] = {};
+    if (!weeklyData[name][wk]) weeklyData[name][wk] = {
+      emailOffered:0, chatOffered:0, emailFulfilled:0, chatFulfilled:0,
+      convClosed:0, logSec:0, actSec:0, taskClosed:0, taskHandleSec:0,
+      emailAHTWSum:0, emailAHTWCount:0, chatAHTWSum:0, chatAHTWCount:0,
+    };
+    const w = weeklyData[name][wk];
+    w.emailOffered  += eOff; w.chatOffered   += cOff;
+    w.emailFulfilled += eFul; w.chatFulfilled += cFul;
+    w.convClosed    += gn(c, C.convClosed);
+    w.logSec        += logS; w.actSec        += actS;
+    w.taskClosed    += tCl;  w.taskHandleSec += tHS;
+    if (eAHT > 0 && eFul > 0) { w.emailAHTWSum += eAHT * eFul; w.emailAHTWCount += eFul; }
+    if (cAHT > 0 && cFul > 0) { w.chatAHTWSum  += cAHT * cFul; w.chatAHTWCount  += cFul; }
+  });
+
+  // Finalize agents
+  allAgents = Object.values(rawAgents).map(finalize).sort((a,b) => a.name.localeCompare(b.name));
+
+  // All weeks sorted
+  const weekSet = new Set();
+  Object.values(weeklyData).forEach(wks => Object.keys(wks).forEach(w => weekSet.add(w)));
+  allWeeks = [...weekSet].sort((a, b) => {
+    const pa = a.split('/'), pb = b.split('/');
+    return new Date(2026, +pa[0]-1, +pa[1]) - new Date(2026, +pb[0]-1, +pb[1]);
+  });
+
+  // Date range display
+  document.getElementById('date-range').textContent = `Plixi · ${fmtDate(minDate) || '—'} – ${fmtDate(maxDate) || '—'}`;
+  document.getElementById('last-updated').textContent = `Live data · updated ${new Date().toLocaleString()}`;
+  syncDateInputs(minDate, maxDate);
+
+  // Build agent dropdown
+  const sel = document.getElementById('agent-select');
+  sel.innerHTML = '<option value="all">All Agents</option>';
+  allAgents.forEach(a => {
+    const opt = document.createElement('option');
+    opt.value = a.name; opt.textContent = a.name;
+    sel.appendChild(opt);
+  });
+  document.getElementById('agent-bar').classList.remove('hidden');
+
+  renderAll(allAgents);
+}
+
+function finalize(raw) {
+  const dw  = Math.max(raw.days.size, 1);
+  const ahr = raw.actSec / 3600;
+  const totOff = raw.emailOffered + raw.chatOffered;
+  const totFul = raw.emailFulfilled + raw.chatFulfilled;
+  return {
+    name:           raw.name,
+    totalEmails:    raw.emailOffered,
+    totalChats:     raw.chatOffered,
+    totalCombined:  totOff,
+    emailClosed:    raw.emailFulfilled,
+    chatClosed:     raw.chatFulfilled,
+    combinedClosed: totFul,
+    avgEmailPerDay: r1(raw.emailOffered / dw),
+    avgChatPerDay:  r1(raw.chatOffered  / dw),
+    avgCombinedPerDay: r1(totOff / dw),
+    avgRespPerDay:  r1(totFul / dw),
+    custPerHour:    ahr > 0 ? r2(totOff / ahr) : 0,
+    respPerHour:    ahr > 0 ? r2(totFul / ahr) : 0,
+    daysWorked:     raw.days.size,
+    loginPct:       raw.logSec > 0 ? r1(raw.actSec / raw.logSec * 100) : 0,
+    avgHrsActive:   r2(raw.actSec / 3600 / dw),
+    totalActiveHrs: r2(raw.actSec / 3600),
+    emailAHT:       raw.emailAHTWCount > 0 ? r1(raw.emailAHTWSum / raw.emailAHTWCount / 60) : 0,
+    chatAHT:        raw.chatAHTWCount  > 0 ? r1(raw.chatAHTWSum  / raw.chatAHTWCount  / 60) : 0,
+    taskAHT:        raw.taskClosed > 0 ? r1(raw.taskHandleSec / raw.taskClosed / 60) : 0,
+    taskClosed:     raw.taskClosed,
+    // raw totals for team-level aggregation
+    _logSec: raw.logSec, _actSec: raw.actSec,
+    _emailAHTWSum: raw.emailAHTWSum, _emailAHTWCount: raw.emailAHTWCount,
+    _chatAHTWSum:  raw.chatAHTWSum,  _chatAHTWCount:  raw.chatAHTWCount,
+  };
+}
+
+// ─── AGENT FILTER ─────────────────────────────────────────────────────────────
+function applyAgentFilter() {
+  const val = document.getElementById('agent-select').value;
+  const filtered = val === 'all' ? allAgents : allAgents.filter(a => a.name === val);
+  renderAll(filtered);
+}
+
+// ─── RENDER ALL ──────────────────────────────────────────────────────────────
+function renderAll(agents) {
+  renderTeamKPIs(agents);
+  renderAgentCards(agents);
+  renderCharts(agents);
+  renderTable(agents);
+  document.getElementById('dashboard').classList.remove('hidden');
+  document.getElementById('loading').classList.add('hidden');
+}
+
+// ─── TEAM KPIs ───────────────────────────────────────────────────────────────
+function renderTeamKPIs(agents) {
+  if (!agents.length) return;
+
+  const totEmails   = sum(agents.map(a => a.totalEmails));
+  const totChats    = sum(agents.map(a => a.totalChats));
+  const totCombined = sum(agents.map(a => a.totalCombined));
+  const avgEmailCl  = r1(avg(agents.map(a => a.emailClosed)));
+  const avgChatCl   = r1(avg(agents.map(a => a.chatClosed)));
+  const avgCombCl   = r1(avg(agents.map(a => a.combinedClosed)));
+  const avgEperDay  = r1(avg(agents.map(a => a.avgEmailPerDay)));
+  const avgCperDay  = r1(avg(agents.map(a => a.avgChatPerDay)));
+  const avgTperDay  = r1(avg(agents.map(a => a.avgCombinedPerDay)));
+  const totActiveHrs = sum(agents.map(a => a.totalActiveHrs));
+  const custPerHr   = totActiveHrs > 0 ? r2(totCombined / totActiveHrs) : 0;
+  const respPerHr   = totActiveHrs > 0 ? r2(sum(agents.map(a=>a.combinedClosed)) / totActiveHrs) : 0;
+  const totDays     = sum(agents.map(a => a.daysWorked));
+  const avgHrsAct   = r2(avg(agents.map(a => a.avgHrsActive)));
+  // Weighted AHT across agents
+  const eWSum = sum(agents.map(a => a._emailAHTWSum));
+  const eWCnt = sum(agents.map(a => a._emailAHTWCount));
+  const cWSum = sum(agents.map(a => a._chatAHTWSum));
+  const cWCnt = sum(agents.map(a => a._chatAHTWCount));
+  const emailAHT = eWCnt > 0 ? r1(eWSum / eWCnt / 60) : 0;
+  const chatAHT  = cWCnt > 0 ? r1(cWSum / cWCnt / 60) : 0;
+
+  const groups = [
+    { label: 'Totals', cards: [
+      { label:'Total Emails',               value: totEmails.toLocaleString(),   color:'default' },
+      { label:'Total Chats',                value: totChats.toLocaleString(),    color:'default' },
+      { label:'Overall (Email + Chat)',      value: totCombined.toLocaleString(), color:'teal'   },
+    ]},
+    { label: 'Averages — Closed', cards: [
+      { label:'Avg Emails Closed',          value: avgEmailCl,   color:'green'   },
+      { label:'Avg Chats Closed',           value: avgChatCl,    color:'green'   },
+      { label:'Avg Email + Chat Closed',    value: avgCombCl,    color:'green'   },
+    ]},
+    { label: 'Customers per Day', cards: [
+      { label:'Avg Customers/Day (Email)',  value: avgEperDay,   color:'default' },
+      { label:'Avg Customers/Day (Chat)',   value: avgCperDay,   color:'default' },
+      { label:'Avg Customers/Day (Email+Chat)', value: avgTperDay, color:'default' },
+    ]},
+    { label: 'Rates & Time', cards: [
+      { label:'Avg Customers Received/Hr',  value: custPerHr,    color:'default' },
+      { label:'Avg Responses/Hr',           value: respPerHr,    color:'default' },
+      { label:'Total Days Worked',          value: totDays + ' days', color:'default' },
+      { label:'Avg Hours Active/Day',       value: avgHrsAct + ' hrs', color:'default' },
+    ]},
+    { label: 'Handle Time', cards: [
+      { label:'Email AHT (Minutes)',        value: emailAHT + ' min', color:'yellow'  },
+      { label:'Chat AHT (Minutes)',         value: chatAHT  + ' min', color:'yellow'  },
+    ]},
+  ];
+
+  const el = document.getElementById('kpi-cards');
+  el.innerHTML = '';
+  groups.forEach(g => {
+    el.innerHTML += `<div class="kpi-group-label">${g.label}</div>`;
+    const grid = document.createElement('div');
+    grid.className = 'kpi-grid';
+    g.cards.forEach(d => {
+      grid.innerHTML += `<div class="kpi-card ${d.color === 'default' ? '' : d.color}">
+        <div class="label">${d.label}</div>
+        <div class="value">${d.value}</div>
+        <div class="sub">Team ${agents.length === 1 ? agents[0].name.split(' ')[0] : 'average / total'}</div>
+      </div>`;
+    });
+    el.appendChild(grid);
+  });
+}
+
+// ─── AGENT CARDS ─────────────────────────────────────────────────────────────
+function renderAgentCards(agents) {
+  const el = document.getElementById('agent-cards');
+  el.innerHTML = '';
+  agents.forEach((a, i) => {
+    const initials = a.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    const color    = COLORS[i % COLORS.length];
+    const loginCls = a.loginPct >= 90 ? 'good' : a.loginPct >= 75 ? '' : 'bad';
+    const respCls  = a.avgRespPerDay >= 30 ? 'good' : '';
+    el.innerHTML += `
+    <div class="agent-card">
+      <div class="agent-header" style="background:${color}">
+        <div class="agent-avatar">${initials}</div>
+        <div><div class="agent-name">${a.name}</div><div class="agent-team">Plixi Team</div></div>
+      </div>
+      <div class="agent-stats">
+        <div class="stat-item"><div class="stat-label">Total Emails</div><div class="stat-value">${a.totalEmails.toLocaleString()}</div></div>
+        <div class="stat-item"><div class="stat-label">Total Chats</div><div class="stat-value">${a.totalChats.toLocaleString()}</div></div>
+        <div class="stat-item"><div class="stat-label">Email+Chat Total</div><div class="stat-value">${a.totalCombined.toLocaleString()}</div></div>
+        <div class="stat-item"><div class="stat-label">Emails Closed</div><div class="stat-value">${a.emailClosed.toLocaleString()}</div></div>
+        <div class="stat-item"><div class="stat-label">Chats Closed</div><div class="stat-value">${a.chatClosed.toLocaleString()}</div></div>
+        <div class="stat-item"><div class="stat-label">Combined Closed</div><div class="stat-value">${a.combinedClosed.toLocaleString()}</div></div>
+      </div>
+      <div class="agent-divider"></div>
+      <div class="agent-stats">
+        <div class="stat-item"><div class="stat-label">Avg Email/Day</div><div class="stat-value">${a.avgEmailPerDay}</div></div>
+        <div class="stat-item"><div class="stat-label">Avg Chat/Day</div><div class="stat-value">${a.avgChatPerDay}</div></div>
+        <div class="stat-item"><div class="stat-label">Avg Combined/Day</div><div class="stat-value">${a.avgCombinedPerDay}</div></div>
+        <div class="stat-item"><div class="stat-label">Customers/Hr</div><div class="stat-value">${a.custPerHour}</div></div>
+        <div class="stat-item"><div class="stat-label">Responses/Hr</div><div class="stat-value ${respCls}">${a.respPerHour}</div></div>
+        <div class="stat-item"><div class="stat-label">Days Worked</div><div class="stat-value">${a.daysWorked}</div></div>
+      </div>
+      <div class="agent-divider"></div>
+      <div class="agent-stats">
+        <div class="stat-item"><div class="stat-label">% Login Used</div><div class="stat-value ${loginCls}">${a.loginPct}%</div></div>
+        <div class="stat-item"><div class="stat-label">Hrs Active/Day</div><div class="stat-value">${a.avgHrsActive} hrs</div></div>
+        <div class="stat-item"><div class="stat-label">Tasks Closed</div><div class="stat-value">${a.taskClosed}</div></div>
+        <div class="stat-item"><div class="stat-label">Email AHT (min)</div><div class="stat-value">${a.emailAHT || '—'}</div></div>
+        <div class="stat-item"><div class="stat-label">Chat AHT (min)</div><div class="stat-value">${a.chatAHT || '—'}</div></div>
+        <div class="stat-item"><div class="stat-label">Task AHT (min)</div><div class="stat-value">${a.taskAHT || '—'}</div></div>
+      </div>
+    </div>`;
+  });
+}
+
+// ─── COMPARISON CHARTS ────────────────────────────────────────────────────────
+function destroyCharts() { Object.values(charts).forEach(c => c?.destroy()); charts = {}; }
+
+function makeChart(id, labels, datasets, opts = {}) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  charts[id] = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8, boxWidth: 12 } },
+        tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y}${opts.pct ? '%' : ''}` } },
+      },
+      scales: {
+        y: { beginAtZero: true, grid: { color: '#f3f4f6' }, ticks: { font: { size: 10 } } },
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+      },
+    },
+  });
+}
+
+function renderCharts(agents) {
+  destroyCharts();
+
+  function buildDatasets(metricFn) {
+    return agents.map((a, i) => ({
+      label: a.name.split(' ')[0],
+      data: allWeeks.map(wk => {
+        const w = weeklyData[a.name]?.[wk];
+        return w ? (metricFn(w) ?? 0) : 0;
+      }),
+      borderColor: COLORS[i % COLORS.length],
+      backgroundColor: PALE[i % PALE.length],
+      fill: false, tension: 0.3, pointRadius: 3, borderWidth: 2,
+    }));
+  }
+
+  const wks = allWeeks; // x-axis labels
+
+  makeChart('chart-emails',    wks, buildDatasets(w => w.emailOffered));
+  makeChart('chart-chats',     wks, buildDatasets(w => w.chatOffered));
+  makeChart('chart-combined',  wks, buildDatasets(w => w.emailOffered + w.chatOffered));
+  makeChart('chart-closed',    wks, buildDatasets(w => w.emailFulfilled + w.chatFulfilled));
+  makeChart('chart-login',     wks, buildDatasets(w => w.logSec > 0 ? r1(w.actSec / w.logSec * 100) : 0), { pct: true });
+  makeChart('chart-email-aht', wks, buildDatasets(w => w.emailAHTWCount > 0 ? r1(w.emailAHTWSum / w.emailAHTWCount / 60) : null));
+  makeChart('chart-chat-aht',  wks, buildDatasets(w => w.chatAHTWCount  > 0 ? r1(w.chatAHTWSum  / w.chatAHTWCount  / 60) : null));
+  makeChart('chart-task-aht',  wks, buildDatasets(w => w.taskClosed > 0 ? r1(w.taskHandleSec / w.taskClosed / 60) : null));
+}
+
+// ─── FULL TABLE ───────────────────────────────────────────────────────────────
+function renderTable(agents) {
+  const cols = [
+    { h: 'Agent',                fn: a => a.name },
+    { h: 'Total Emails',         fn: a => a.totalEmails.toLocaleString() },
+    { h: 'Total Chats',          fn: a => a.totalChats.toLocaleString() },
+    { h: 'Days Worked',          fn: a => a.daysWorked },
+    { h: 'Avg Response/Day',     fn: a => a.avgRespPerDay },
+    { h: 'Email+Chat Closed',    fn: a => a.combinedClosed.toLocaleString() },
+    { h: 'Avg Customers/Day',    fn: a => a.avgCombinedPerDay },
+    { h: '% Login Utilized',     fn: a => { const cls = a.loginPct>=90?'green':a.loginPct>=75?'yellow':'red'; return `<span class="pill ${cls}">${a.loginPct}%</span>`; } },
+    { h: 'Hrs Active/Day',       fn: a => a.avgHrsActive + ' hrs' },
+    { h: 'Email+Chat /Hour',     fn: a => a.respPerHour },
+    { h: 'Tasks Closed',         fn: a => a.taskClosed },
+  ];
+
+  document.getElementById('table-head').innerHTML = '<tr>' + cols.map(c=>`<th>${c.h}</th>`).join('') + '</tr>';
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = '';
+
+  agents.forEach(a => {
+    tbody.innerHTML += '<tr>' + cols.map(c=>`<td>${c.fn(a)}</td>`).join('') + '</tr>';
+  });
+
+  // Team average row
+  if (agents.length > 1) {
+    const teamAvg = {
+      name: 'Team Avg',
+      totalEmails: Math.round(avg(agents.map(a=>a.totalEmails))),
+      totalChats:  Math.round(avg(agents.map(a=>a.totalChats))),
+      daysWorked:  Math.round(avg(agents.map(a=>a.daysWorked))),
+      avgRespPerDay: r1(avg(agents.map(a=>a.avgRespPerDay))),
+      combinedClosed: Math.round(avg(agents.map(a=>a.combinedClosed))),
+      avgCombinedPerDay: r1(avg(agents.map(a=>a.avgCombinedPerDay))),
+      loginPct: r1(avg(agents.map(a=>a.loginPct))),
+      avgHrsActive: r2(avg(agents.map(a=>a.avgHrsActive))),
+      respPerHour: r2(avg(agents.map(a=>a.respPerHour))),
+      taskClosed: Math.round(avg(agents.map(a=>a.taskClosed))),
+    };
+    tbody.innerHTML += '<tr class="avg-row">' + cols.map(c=>`<td>${c.fn(teamAvg)}</td>`).join('') + '</tr>';
+  }
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+loadSavedDates();
+loadData();
+</script>
+</body>
+</html>
