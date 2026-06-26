@@ -200,13 +200,13 @@
 <div class="filters-bar">
   <div class="filter-row">
     <div class="filter-group">
-      <label>From Month</label>
+      <label>From (Month &amp; Year)</label>
       <select id="filterMonthFrom">
         <option value="">All</option>
       </select>
     </div>
     <div class="filter-group">
-      <label>To Month</label>
+      <label>To (Month &amp; Year)</label>
       <select id="filterMonthTo">
         <option value="">All</option>
       </select>
@@ -485,15 +485,25 @@ function parseGvizTable(table) {
 
 // ─── Filters ─────────────────────────────────────────────────────────────────
 function populateFilters() {
-  // Months
-  const months = [...new Set(rawData.map(r => r.month).filter(Boolean))].sort((a,b) => MONTH_ORDER.indexOf(a) - MONTH_ORDER.indexOf(b));
+  // Build Month+Year keys from timestamps (e.g. "2025-05" → "May 2025")
+  const monthYearSet = new Set();
+  for (const r of rawData) {
+    if (r.timestamp) {
+      const key = `${r.timestamp.getFullYear()}-${String(r.timestamp.getMonth()+1).padStart(2,'0')}`;
+      monthYearSet.add(key);
+    }
+  }
+  const monthYearKeys = [...monthYearSet].sort(); // sorts as "2025-05", "2025-06" etc.
+
   const fromSel = document.getElementById('filterMonthFrom');
   const toSel = document.getElementById('filterMonthTo');
   fromSel.innerHTML = '<option value="">All</option>';
   toSel.innerHTML = '<option value="">All</option>';
-  months.forEach(m => {
-    fromSel.innerHTML += `<option value="${m}">${m}</option>`;
-    toSel.innerHTML += `<option value="${m}">${m}</option>`;
+  monthYearKeys.forEach(key => {
+    const [yr, mo] = key.split('-');
+    const label = `${MONTH_ORDER[parseInt(mo)-1]} ${yr}`;
+    fromSel.innerHTML += `<option value="${key}">${label}</option>`;
+    toSel.innerHTML += `<option value="${key}">${label}</option>`;
   });
 
   // Agents
@@ -513,10 +523,10 @@ function applyFilters() {
 
   filteredData = rawData.filter(r => {
     if (monthFrom || monthTo) {
-      const monthIdx = MONTH_ORDER.indexOf(r.month);
-      const fromIdx = monthFrom ? MONTH_ORDER.indexOf(monthFrom) : 0;
-      const toIdx = monthTo ? MONTH_ORDER.indexOf(monthTo) : 11;
-      if (monthIdx < fromIdx || monthIdx > toIdx) return false;
+      if (!r.timestamp) return false;
+      const key = `${r.timestamp.getFullYear()}-${String(r.timestamp.getMonth()+1).padStart(2,'0')}`;
+      if (monthFrom && key < monthFrom) return false;
+      if (monthTo && key > monthTo) return false;
     }
     if (agent && r.agent !== agent) return false;
     if (auditType && r.auditType !== auditType) return false;
@@ -620,14 +630,25 @@ function renderOverview() {
 }
 
 function renderTrendChart(data) {
-  // Group by month
+  // Group by Month Year (e.g. "May 2025")
   const monthGroups = {};
   for (const r of data) {
-    const key = r.month || 'Unknown';
+    let key = 'Unknown';
+    if (r.timestamp) {
+      const yr = r.timestamp.getFullYear();
+      const mo = r.timestamp.getMonth();
+      key = `${MONTH_ORDER[mo]} ${yr}`;
+    } else if (r.month) {
+      key = r.month;
+    }
     if (!monthGroups[key]) monthGroups[key] = [];
     monthGroups[key].push(r.score);
   }
-  const labels = Object.keys(monthGroups).sort((a,b) => MONTH_ORDER.indexOf(a) - MONTH_ORDER.indexOf(b));
+  // Sort by date
+  const labels = Object.keys(monthGroups).sort((a,b) => {
+    const parse = s => { const p = s.split(' '); return parseInt(p[1])*100 + MONTH_ORDER.indexOf(p[0]); };
+    return parse(a) - parse(b);
+  });
   const values = labels.map(m => avg(monthGroups[m]));
 
   document.getElementById('trendLabel').textContent = '— Monthly';
@@ -879,11 +900,21 @@ function renderAgentMarkdownChart(name, data, idx) {
 function renderAgentTrendChart(name, data, idx) {
   const monthGroups = {};
   for (const r of data) {
-    const key = r.month || 'Unknown';
+    let key = 'Unknown';
+    if (r.timestamp) {
+      const yr = r.timestamp.getFullYear();
+      const mo = r.timestamp.getMonth();
+      key = `${MONTH_ORDER[mo]} ${yr}`;
+    } else if (r.month) {
+      key = r.month;
+    }
     if (!monthGroups[key]) monthGroups[key] = [];
     monthGroups[key].push(r.score);
   }
-  const labels = Object.keys(monthGroups).sort((a,b) => MONTH_ORDER.indexOf(a) - MONTH_ORDER.indexOf(b));
+  const labels = Object.keys(monthGroups).sort((a,b) => {
+    const parse = s => { const p = s.split(' '); return parseInt(p[1])*100 + MONTH_ORDER.indexOf(p[0]); };
+    return parse(a) - parse(b);
+  });
   const values = labels.map(m => avg(monthGroups[m]));
 
   const canvasId = `agentTrend_${idx}`;
