@@ -198,18 +198,12 @@
 
 <!-- Filters -->
 <div class="filters-bar">
-  <div class="filter-row">
-    <div class="filter-group">
-      <label>From (Month &amp; Year)</label>
-      <select id="filterMonthFrom">
-        <option value="">All</option>
-      </select>
-    </div>
-    <div class="filter-group">
-      <label>To (Month &amp; Year)</label>
-      <select id="filterMonthTo">
-        <option value="">All</option>
-      </select>
+  <div class="filter-group">
+    <label>Date Range</label>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <input type="date" id="filterMonthFrom" style="min-width:unset;width:150px;">
+      <span style="color:var(--text-muted);font-size:16px;">→</span>
+      <input type="date" id="filterMonthTo" style="min-width:unset;width:150px;">
     </div>
   </div>
   <div class="filter-divider"></div>
@@ -485,26 +479,13 @@ function parseGvizTable(table) {
 
 // ─── Filters ─────────────────────────────────────────────────────────────────
 function populateFilters() {
-  // Build Month+Year keys from timestamps (e.g. "2025-05" → "May 2025")
-  const monthYearSet = new Set();
-  for (const r of rawData) {
-    if (r.timestamp) {
-      const key = `${r.timestamp.getFullYear()}-${String(r.timestamp.getMonth()+1).padStart(2,'0')}`;
-      monthYearSet.add(key);
-    }
+  // Set default date range to cover all data
+  const dates = rawData.map(r => r.timestamp).filter(Boolean).sort((a,b) => a-b);
+  if (dates.length) {
+    const toISO = d => d.toISOString().split('T')[0];
+    document.getElementById('filterMonthFrom').value = toISO(dates[0]);
+    document.getElementById('filterMonthTo').value = toISO(dates[dates.length-1]);
   }
-  const monthYearKeys = [...monthYearSet].sort(); // sorts as "2025-05", "2025-06" etc.
-
-  const fromSel = document.getElementById('filterMonthFrom');
-  const toSel = document.getElementById('filterMonthTo');
-  fromSel.innerHTML = '<option value="">All</option>';
-  toSel.innerHTML = '<option value="">All</option>';
-  monthYearKeys.forEach(key => {
-    const [yr, mo] = key.split('-');
-    const label = `${MONTH_ORDER[parseInt(mo)-1]} ${yr}`;
-    fromSel.innerHTML += `<option value="${key}">${label}</option>`;
-    toSel.innerHTML += `<option value="${key}">${label}</option>`;
-  });
 
   // Agents
   const agents = [...new Set(rawData.map(r => r.agent))].sort();
@@ -524,9 +505,9 @@ function applyFilters() {
   filteredData = rawData.filter(r => {
     if (monthFrom || monthTo) {
       if (!r.timestamp) return false;
-      const key = `${r.timestamp.getFullYear()}-${String(r.timestamp.getMonth()+1).padStart(2,'0')}`;
-      if (monthFrom && key < monthFrom) return false;
-      if (monthTo && key > monthTo) return false;
+      const rowDate = r.timestamp.toISOString().split('T')[0];
+      if (monthFrom && rowDate < monthFrom) return false;
+      if (monthTo && rowDate > monthTo) return false;
     }
     if (agent && r.agent !== agent) return false;
     if (auditType && r.auditType !== auditType) return false;
